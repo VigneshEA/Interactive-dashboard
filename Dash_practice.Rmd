@@ -1,0 +1,293 @@
+---
+title: "US Population Stats"
+output: 
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: fill
+    runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(knitr)
+library(DT)
+library(rpivotTable)
+library(ggplot2)
+library(plotly)
+library(dplyr)
+library(openintro)
+library(highcharter)
+library(ggvis)
+```
+
+```{r global, include=FALSE}
+library(MASS)
+data(state)
+#head(state.x77)
+data <- as.data.frame(state.x77)
+data$state <- row.names(state.x77)
+data$statecode <- state.abb
+```
+```{r}
+mycolors <- c("blue","green","red","orange")
+```
+
+Main Page
+======================================
+
+Row
+--------------------------------------
+
+### Overall Income in US (in billions)
+
+```{r}
+valueBox(sum(data$Income),
+         icon = "fa-user")
+```
+
+### **Life Expectancy Rate**
+
+```{r}
+gauge(round(mean(data$`Life Exp`),
+            digits = 2),
+            min = 0,
+            max = 100,
+            gaugeSectors(success = c(60,100),
+                         warning = c(30,60),
+                         danger = c(0,30),
+                         colors = c('green','yellow','red')))
+```
+
+### Total Population in Massachusetts
+
+```{r}
+valueBox(sum(data['Massachusetts',]$Population))
+```
+
+### Total Population in Florida
+
+```{r}
+valueBox(sum(data['Florida',]$Population))
+```
+
+### Total Population in Texas
+
+```{r}
+valueBox(sum(data['Texas',]$Population))
+```
+
+Row
+----------------------------
+
+### Area By State
+
+```{r}
+p1 <- data %>% group_by(state) %>% summarise(Area = sum(Area))%>% plot_ly(x = ~state,
+        y = ~Area,
+        color = rainbow(50),
+        type = 'bar') %>% layout(xaxis=list(title="Populations by State"),yaxis= list(title = 'Area in sq.ft'))
+p1
+```
+
+### Scatter Plot of  Population vs Area
+
+```{r}
+p4 <- plot_ly(data, x=~Population) %>% 
+  add_markers(y=~Area,
+              text =~paste("State:",state),
+              showlegend = F) %>% 
+  add_lines(y =~fitted(loess(Population~Area)),
+            name = "Loess Smoother",
+            color = I("#FFC125"),
+            showlegend = T,
+            line = list(width =5)) %>% 
+  layout(xaxis = list(title ="Population"),
+         yaxis = list(title = "Area"))
+p4
+```
+
+State wise Stats
+============================================
+
+### State wise Illiteracy
+
+```{r}
+p3 <- plot_ly(data,
+              x=~state,
+              y=~Illiteracy,
+              text = paste("State:",data$state,
+                           "Illiteracy:",data$Illiteracy),
+              type = "bar") %>% 
+  layout(xaxis = list(title = "State"),
+         yaxis = list(title = "Illiteracy"))
+p3
+```
+
+### Top Populated States
+
+```{r}
+p2 <- data %>% group_by(state) %>% 
+  summarise(Poulation = sum(Population,na.rm = T)) %>% 
+  filter(Poulation>10000) %>% 
+  plot_ly(labels =~state,
+          values =~Poulation,
+          marker = list(colors = mycolors)) %>%
+  add_pie(hole = 0.3)
+p2
+```
+
+Map
+==========================================
+
+### Map 
+
+```{r}
+#abbr
+s <- data %>% 
+  group_by(state) %>% 
+  summarise(Income = sum(Income,na.rm = T))
+
+highchart() %>% 
+  hc_title(text = "Income for each State") %>% 
+  hc_subtitle(text= "Source : MASS Data") %>%
+  hc_add_series_map(usgeojson,s,
+                    name = "state",
+                    value = "Income",
+                    joinBy = c("woename","state")) %>% 
+  hc_mapNavigation(enabled =T)
+```
+
+Data Table 
+========================
+
+```{r}
+datatable(data,
+          caption = "US Population Income Illiteracy Data",
+          rownames = T,
+          filter = "top",
+          options = list(pageLength = 25))
+```
+
+Pivot Table
+=========================================
+
+```{r}
+rpivotTable(data,
+            aggregatorName = "Sum",
+            cols= "",
+            rows = "state",
+            vals = "Income",
+            rendererName = "Bar Chart")
+```
+
+Summary {data-orientation=columns} 
+===========================================
+
+Column 
+-----------------------------------
+
+### High Population
+
+```{r}
+valueBox(max(data$Population),
+         icon = "fa-user" )
+```
+
+### Average Income
+```{r}
+valueBox(round(mean(data$Income),
+               digits = 2),
+         icon = "fa-area-chart")
+```
+
+### Average Life Expectancy
+
+```{r}
+valueBox(round(mean(data$`Life Exp`), digits = 2),
+         icon = "fa-area-chart")
+```
+
+Column
+---------------------------
+
+Report
+
+* This is a report on `r length(data$state)` States in US.
+
+* Largest among the States is `r data$state[data$Area == max(data$Area)]` with an Area of `r max(data$Area)` sq miles.
+
+* The average murder rate was `r mean(data$Murder)`.
+
+This report was generated on `r format(Sys.Date(), format = "%B %d, %Y")`.
+
+Reactive Part
+========================================
+
+Column {.sidebar}
+-----------------------------------------------------------------------
+  
+
+```{r}
+selectInput(inputId = "p_state", label = strong("Select a State"),
+                                choices =  unique(data$state),selected = "California")
+
+            
+```
+
+
+```{r}
+textInput("Name", "Enter your Name", "VigneshEA")
+```
+
+
+Column
+------------------------------------------
+
+### Selected State Total Income
+
+```{r}
+summary_data <- reactive({
+  ip <- input$p_state
+  final_data <- filter(data, state == ip)
+  final_data
+    })
+
+
+renderPrint({
+  summary_data()
+    })
+```
+
+Row 
+--------------------------------
+
+### User Name 
+
+```{r}
+p_name <- reactive({
+Name <- input$Name
+Name
+})
+
+
+renderText({ 
+  p_name()
+  })
+```
+
+
+
+
+
+About Report
+========================================
+
+Created by: Vignesh EA
+
+Confidential: Nothing like that!
+
+
+
+
+
+
